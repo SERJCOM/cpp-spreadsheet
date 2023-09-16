@@ -41,7 +41,5 @@ private:
     std::map<int, std::unordered_set<int>> row_cell_;
     std::map<int, std::unordered_set<int>> col_cell_;
 
-    std::unordered_map<Position, std::unique_ptr<Cell>, PositionHash> deleted_cells_;
 
-    bool IsCellDeleted(Position pos) const ;
 };

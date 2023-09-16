@@ -16,11 +16,10 @@ Cell::Cell(Sheet &sheet)
 
 void Cell::Set(std::string text)
 {
-    if(text == text_){
+    if(text == impl_->GetText()){
         return;
     }
 
-    text_ = text;
 
     if(IsReferenced()){
         InvalidateCache();
@@ -61,8 +60,6 @@ void Cell::Clear()
     
     impl_ = std::make_unique<EmptyImpl>();
 
-    text_ = "";
-
 }
 
 Cell::Value Cell::GetValue() const
@@ -93,7 +90,7 @@ std::vector<Position> Cell::GetReferencedCells() const
 
 bool Cell::IsReferenced() const
 {
-    return referring_cells_.size() > 0;
+    return !referring_cells_.empty();
 }
 
 bool Cell::IsEmpty() const
@@ -124,30 +121,28 @@ void Cell::InvalidateCache()
     }
 
     for(auto cell : GetReferencedCells()){
-        sheet_->GetConcreteCell(cell)->DeleteReferringCell(this);
+        Cell* cell_ptr = sheet_->GetConcreteCell(cell);
+        if(cell_ptr)    cell_ptr->DeleteReferringCell(this);
+    
     }
 
 }
 
 
 
-void Cell::CheckCyclicDependenciesRecursion(CellsContainer& cells_stack, std::unordered_set<const Cell*>& processed_cells) const 
+void Cell::CheckCyclicDependenciesRecursion(const Cell* starting_cell, std::unordered_set<const Cell*>& processed_cells) const 
 {
     if(processed_cells.count(this) != 0){
         return;
     }
 
-    if(std::find(cells_stack.begin(), cells_stack.end(), this) != cells_stack.end()){
+    if(starting_cell == this){
         throw CircularDependencyException("circular dependency");
     }
 
-    cells_stack.push_back(this);
-
-
     for(auto ref_cell : GetReferencedCells()){
         const Cell* _cell = sheet_->GetConcreteCell(ref_cell);
-        _cell->CheckCyclicDependenciesRecursion(cells_stack, processed_cells);
-        cells_stack.erase(cells_stack.end() - 1);
+        _cell->CheckCyclicDependenciesRecursion(starting_cell, processed_cells);
         processed_cells.insert(_cell);
     }
 
@@ -162,12 +157,10 @@ void Cell::CheckCyclicDependencies(const CellsContainer& referring_cells) const
         throw CircularDependencyException("circular dependency");
     }
 
-    std::vector<const Cell*> stop_set{this};
-
     std::unordered_set<const Cell*> empty_processed_cell;
 
     for(auto ref_cell : referring_cells){
-        ref_cell->CheckCyclicDependenciesRecursion(stop_set, empty_processed_cell);
+        ref_cell->CheckCyclicDependenciesRecursion(this, empty_processed_cell);
     }
 }
 
@@ -261,12 +254,5 @@ void Cell::FormulaImpl::Clear()
     formula_ = ParseFormula("");
 }
 
-void Cell::Impl::DeleteCache()
-{
-    cache_.reset();
-}
 
-bool Cell::Impl::HasCache() const
-{
-    return cache_.has_value();
-}
+

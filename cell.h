@@ -32,7 +32,6 @@ private:
     std::unique_ptr<Impl> impl_;
     Sheet* sheet_ = nullptr;
     std::vector<Cell*> referring_cells_;
-    std::string text_;
 
     void AddReferringCell(Cell* cell);
 
@@ -41,7 +40,7 @@ private:
     void InvalidateCache();
 
     using CellsContainer = std::vector<const Cell*>;
-    void CheckCyclicDependenciesRecursion(CellsContainer& cells_stack, std::unordered_set<const Cell*>& processed_cells) const ;
+    void CheckCyclicDependenciesRecursion(const Cell* starting_cell, std::unordered_set<const Cell*>& processed_cells) const ;
 
     void CheckCyclicDependencies(const CellsContainer& referring_cells) const ;
 
@@ -52,9 +51,9 @@ private:
 
         virtual ~Impl() = default;
 
-        void DeleteCache() ;
+        virtual void DeleteCache() {}
 
-        bool HasCache() const ;
+        virtual bool HasCache() const {return false;}
 
         virtual CellInterface::Value GetValue() const = 0 ;
 
@@ -63,14 +62,9 @@ private:
         virtual void Clear() = 0 ;
 
     protected:
-        Value GetCacheValue() const {
-            return cache_.value();
-        }
-        void SetCacheValue(Value value) const {
-            cache_ = value;
-        }
-    private:
-        mutable std::optional<Value> cache_ ;
+        virtual Value GetCacheValue() const {return Value{};}
+
+        virtual void SetCacheValue(Value value) const {}
     };
 
 
@@ -114,9 +108,28 @@ private:
 
         void Clear() override;
 
+        void DeleteCache() override {
+            cache_.reset();
+        }
+
+        bool HasCache() const override {
+            return cache_.has_value();
+        }
+
     private:
+
+        Value GetCacheValue() const override{
+            return cache_.value();
+        }
+
+        void SetCacheValue(Value value) const override {
+            cache_ = value;
+        }
+
+
         std::unique_ptr<FormulaInterface> formula_;
         const Sheet& sheet_;
+        mutable std::optional<Value> cache_ ;
     };
 
 
