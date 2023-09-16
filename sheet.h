@@ -12,6 +12,8 @@
 class Sheet : public SheetInterface {
 public:
 
+    ~Sheet() override = default;
+
     void SetCell(Position pos, std::string text) override;
 
     const CellInterface* GetCell(Position pos) const override;
@@ -32,9 +34,14 @@ public:
     CellInterface::Value GetValue(Position pos) const;
 
 private:
+
+    void SaveCell(std::unique_ptr<Cell> cell, Position pos);
     std::unordered_map<Position, std::unique_ptr<Cell>, PositionHash> position_cell_;
 
     std::map<int, std::unordered_set<int>> row_cell_;
     std::map<int, std::unordered_set<int>> col_cell_;
 
+    std::unordered_map<Position, std::unique_ptr<Cell>, PositionHash> deleted_cells_;
+
+    bool IsCellDeleted(Position pos) const ;
 };

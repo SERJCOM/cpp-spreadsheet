@@ -11,33 +11,39 @@
 Cell::Cell(Sheet &sheet)
 {
     sheet_ = &sheet;
+    impl_ = std::make_unique<EmptyImpl>();
 }
 
 void Cell::Set(std::string text)
 {
-    if(IsReferenced()){
-        InvalidateCash();
+    if(text == text_){
+        return;
     }
 
-    if(text.size() > 0){
-        if(text.at(0) == '=' && text.size() > 1){
+    text_ = text;
+
+    if(IsReferenced()){
+        InvalidateCache();
+    }
+
+    if(!text.empty()){
+        if(text.at(0) == FORMULA_SIGN && text.size() > 1){
             std::unique_ptr<FormulaImpl> temp_impl = std::make_unique<FormulaImpl>(text.substr(1), *sheet_);
             std::vector<const Cell*> vector_cells;
 
-            if(temp_impl->GetReferencedCells().size() > 0){
+            if(temp_impl->GetReferencedCells().size() > 0)
                 for(auto pos : temp_impl->GetReferencedCells()){
                     vector_cells.push_back(sheet_->GetOrCreateCell(pos));
                 }
-            }
+            
 
             CheckCyclicDependencies(vector_cells);
 
-            if(temp_impl->GetReferencedCells().size() > 0){
+            if(temp_impl->GetReferencedCells().size() > 0)
                 for(auto pos : temp_impl->GetReferencedCells()){
                     sheet_->GetConcreteCell(pos)->AddReferringCell(this);
                 }
-            }
-
+            
             impl_ = std::move(temp_impl);
         }
         else{
@@ -51,11 +57,12 @@ void Cell::Set(std::string text)
 
 void Cell::Clear()
 {
-    if(IsReferenced()){
-        InvalidateCash();
-    }
+    if(IsReferenced())  InvalidateCache();
+    
+    impl_ = std::make_unique<EmptyImpl>();
 
-    impl_->Clear();
+    text_ = "";
+
 }
 
 Cell::Value Cell::GetValue() const
@@ -89,59 +96,86 @@ bool Cell::IsReferenced() const
     return referring_cells_.size() > 0;
 }
 
+bool Cell::IsEmpty() const
+{
+    return ( dynamic_cast<EmptyImpl*>(impl_.get()) != nullptr );
+}
+
+
+
+
 void Cell::AddReferringCell(Cell* cell)
 {
     referring_cells_.push_back(cell);
 }
 
-void Cell::InvalidateCash()
+void Cell::DeleteReferringCell(Cell *cell)
 {
-    if(HasCash()){
-        impl_->DeleteCash();
+    std::remove(referring_cells_.begin(), referring_cells_.end(), cell);
+}
+
+void Cell::InvalidateCache()
+{
+    if(HasCache()){
+        impl_->DeleteCache();
         for(auto cell : referring_cells_){
-            cell->InvalidateCash();
+            cell->InvalidateCache();
         }
     }
+
+    for(auto cell : GetReferencedCells()){
+        sheet_->GetConcreteCell(cell)->DeleteReferringCell(this);
+    }
+
 }
 
 
 
-void Cell::CheckCyclicDependencies(std::unordered_set<const Cell *> processed_cells) const 
+void Cell::CheckCyclicDependenciesRecursion(CellsContainer& cells_stack, std::unordered_set<const Cell*>& processed_cells) const 
 {
     if(processed_cells.count(this) != 0){
+        return;
+    }
+
+    if(std::find(cells_stack.begin(), cells_stack.end(), this) != cells_stack.end()){
         throw CircularDependencyException("circular dependency");
     }
 
-    processed_cells.insert(this);
+    cells_stack.push_back(this);
+
 
     for(auto ref_cell : GetReferencedCells()){
-        sheet_->GetConcreteCell(ref_cell)->CheckCyclicDependencies(processed_cells);
+        const Cell* _cell = sheet_->GetConcreteCell(ref_cell);
+        _cell->CheckCyclicDependenciesRecursion(cells_stack, processed_cells);
+        cells_stack.erase(cells_stack.end() - 1);
+        processed_cells.insert(_cell);
     }
 
 }
 
 
 
-void Cell::CheckCyclicDependencies(std::vector<const Cell*> referring_cells) const
+void Cell::CheckCyclicDependencies(const CellsContainer& referring_cells) const
 {
     auto it = std::find(referring_cells.begin(), referring_cells.end(), this);
     if(it != referring_cells.end()){
         throw CircularDependencyException("circular dependency");
     }
 
-    std::unordered_set<const Cell*> stop_set;
-    stop_set.insert(this);
+    std::vector<const Cell*> stop_set{this};
+
+    std::unordered_set<const Cell*> empty_processed_cell;
 
     for(auto ref_cell : referring_cells){
-        ref_cell->CheckCyclicDependencies(stop_set);
+        ref_cell->CheckCyclicDependenciesRecursion(stop_set, empty_processed_cell);
     }
 }
 
 
 
-bool Cell::HasCash() const
+bool Cell::HasCache() const
 {
-    return impl_->HasCash();
+    return impl_->HasCache();
 }
 
 CellInterface::Value Cell::EmptyImpl::GetValue() const
@@ -168,7 +202,7 @@ Cell::TextImpl::TextImpl(std::string text)
 CellInterface::Value Cell::TextImpl::GetValue() const
 {
     std::string res = text_;
-    if(text_.find("'") == 0){
+    if(text_.find(ESCAPE_SIGN) == 0){
         res = text_.substr(1);
     }
 
@@ -197,24 +231,28 @@ std::vector<Position> Cell::FormulaImpl::GetReferencedCells() const
 
 CellInterface::Value Cell::FormulaImpl::GetValue() const
 {
-    if(HasCash()){
-        return GetCashValue();
+    if(HasCache()){
+        return GetCacheValue();
     }
     else{
         CellInterface::Value value;
         auto result = formula_->Evaluate(sheet_);
         if(std::holds_alternative<double>(result)){
-            return std::get<double>(result);
+            value = std::get<double>(result);
+            SetCacheValue(value);
+            return value;
         }
         else{
-            return std::get<FormulaError>(result);
+            value = std::get<FormulaError>(result);
+            SetCacheValue(value);
+            return value;
         }   
     }
 }
 
 std::string Cell::FormulaImpl::GetText() const
 {
-    return std::string("=") + formula_->GetExpression();
+    return std::string(1, FORMULA_SIGN) + formula_->GetExpression();
 }
 
 void Cell::FormulaImpl::Clear()
@@ -223,12 +261,12 @@ void Cell::FormulaImpl::Clear()
     formula_ = ParseFormula("");
 }
 
-void Cell::Impl::DeleteCash()
+void Cell::Impl::DeleteCache()
 {
-    cash_.reset();
+    cache_.reset();
 }
 
-bool Cell::Impl::HasCash() const
+bool Cell::Impl::HasCache() const
 {
-    return cash_.has_value();
+    return cache_.has_value();
 }

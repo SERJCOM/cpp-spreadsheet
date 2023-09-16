@@ -72,7 +72,7 @@ public:
     virtual ~Expr() = default;
     virtual void Print(std::ostream& out) const = 0;
     virtual void DoPrintFormula(std::ostream& out, ExprPrecedence precedence) const = 0;
-    virtual double Evaluate(std::function<CellInterface::Value(Position)> sheetVisitor) const = 0;
+    virtual double Evaluate(const std::function<CellInterface::Value(Position)>& sheetVisitor) const = 0;
 
     // higher is tighter
     virtual ExprPrecedence GetPrecedence() const = 0;
@@ -142,7 +142,7 @@ public:
         }
     }
 
-    double Evaluate(std::function<CellInterface::Value(Position)> sheetVisitor) const override {
+    double Evaluate(const std::function<CellInterface::Value(Position)>& sheetVisitor) const override {
 
         double res;
 
@@ -210,7 +210,7 @@ public:
         return EP_UNARY;
     }
 
-    double Evaluate(std::function<CellInterface::Value(Position)> sheetVisitor) const override {
+    double Evaluate(const std::function<CellInterface::Value(Position)>& sheetVisitor) const override {
         if(type_ == Type::UnaryMinus){
             return -1 * operand_->Evaluate(sheetVisitor);
         }
@@ -252,7 +252,7 @@ public:
         return EP_ATOM;
     }
 
-    double Evaluate(std::function<CellInterface::Value(Position)> sheetVisitor) const override {
+    double Evaluate(const std::function<CellInterface::Value(Position)>& sheetVisitor) const override {
         CellInterface::Value value = sheetVisitor(*cell_);
 
         if(std::holds_alternative<std::string>(value)){
@@ -299,7 +299,7 @@ public:
         return EP_ATOM;
     }
 
-    double Evaluate(std::function<CellInterface::Value(Position)>) const override {
+    double Evaluate(const std::function<CellInterface::Value(Position)>&) const override {
         return value_;
     }
 
@@ -453,7 +453,7 @@ void FormulaAST::PrintFormula(std::ostream& out) const {
     root_expr_->PrintFormula(out, ASTImpl::EP_ATOM);
 }
 
-double FormulaAST::Execute(std::function<CellInterface::Value(Position)> sheetVisitor) const {
+double FormulaAST::Execute(const std::function<CellInterface::Value(Position)>& sheetVisitor) const {
     return root_expr_->Evaluate(sheetVisitor);
 }
 

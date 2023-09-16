@@ -17,12 +17,16 @@ void Sheet::SetCell(Position pos, std::string text) {
     if(!pos.IsValid()){
         throw InvalidPositionException("позиция ошибочна");
     }
+
+    if(IsCellDeleted(pos)){
+        SaveCell(std::move(deleted_cells_.at(pos)), pos);
+        deleted_cells_.erase(pos);
+    }
+
     if(position_cell_.count(pos) == 0){
         std::unique_ptr<Cell> cell = std::make_unique<Cell>(*this);
-        position_cell_[pos] = std::move(cell);
 
-        row_cell_[pos.row].insert(pos.col);
-        col_cell_[pos.col].insert(pos.row);
+        SaveCell(std::move(cell), pos);
 
         position_cell_[pos]->Set(text);
     }
@@ -36,7 +40,7 @@ const CellInterface* Sheet::GetCell(Position pos) const {
     if(!pos.IsValid()){
         throw InvalidPositionException("позиция ошибочна");
     }
-    if(position_cell_.count(pos) == 0){
+    if(position_cell_.count(pos) == 0 || IsCellDeleted(pos)){
         return nullptr;
     }
 
@@ -47,7 +51,7 @@ CellInterface* Sheet::GetCell(Position pos) {
     if(!pos.IsValid()){
         throw InvalidPositionException("позиция ошибочна");
     }
-    if(position_cell_.count(pos) == 0){
+    if(position_cell_.count(pos) == 0 || IsCellDeleted(pos)){
         return nullptr;
     }
 
@@ -59,6 +63,8 @@ void Sheet::ClearCell(Position pos) {
         throw InvalidPositionException("позиция ошибочна");
     }
     if(GetCell(pos)){
+        GetConcreteCell(pos)->Clear();
+        deleted_cells_[pos] = std::move(position_cell_.at(pos));
         position_cell_.erase(pos);
         row_cell_.at(pos.row).erase(pos.col);
         if(row_cell_.at(pos.row).size() == 0){
@@ -148,7 +154,7 @@ Cell *Sheet::GetConcreteCell(Position pos)
 
 Cell *Sheet::GetOrCreateCell(Position pos)
 {
-    if(position_cell_.count(pos) == 0){
+    if(position_cell_.count(pos) == 0 ){
         SetCell(pos, "");
     }
 
@@ -163,12 +169,24 @@ CellInterface::Value Sheet::GetValue(Position pos) const
     }
 
     if(position_cell_.count(pos) == 0){
-        // SetCell(pos, "");
         return 0.0;
     }
 
     return GetConcreteCell(pos)->GetValue();
 }
+
+void Sheet::SaveCell(std::unique_ptr<Cell> cell, Position pos)
+{
+    position_cell_[pos] = std::move(cell);
+        row_cell_[pos.row].insert(pos.col);
+        col_cell_[pos.col].insert(pos.row);
+}
+
+bool Sheet::IsCellDeleted(Position pos) const
+{
+    return deleted_cells_.count(pos);
+}
+
 
 std::unique_ptr<SheetInterface> CreateSheet() {
     return std::make_unique<Sheet>();
