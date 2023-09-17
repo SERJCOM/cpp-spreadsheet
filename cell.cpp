@@ -134,12 +134,6 @@ void Cell::InvalidateCache()
         }
     }
 
-    // for(auto cell : GetReferencedCells()){
-    //     Cell* cell_ptr = sheet_->GetConcreteCell(cell);
-    //     if(cell_ptr)    cell_ptr->DeleteReferringCell(this);
-    
-    // }
-
 }
 
 
