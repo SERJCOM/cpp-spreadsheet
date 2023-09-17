@@ -6,6 +6,7 @@
 #include <optional>
 #include <utility>
 
+
 #include "sheet.h"
 
 Cell::Cell(Sheet &sheet)
@@ -21,45 +22,58 @@ void Cell::Set(std::string text)
     }
 
 
-    if(IsReferenced()){
+    if(text.empty()){
+        impl_ = std::make_unique<EmptyImpl>();
         InvalidateCache();
+        return;
     }
 
-    if(!text.empty()){
-        if(text.at(0) == FORMULA_SIGN && text.size() > 1){
-            std::unique_ptr<FormulaImpl> temp_impl = std::make_unique<FormulaImpl>(text.substr(1), *sheet_);
-            std::vector<const Cell*> vector_cells;
 
-            if(temp_impl->GetReferencedCells().size() > 0)
-                for(auto pos : temp_impl->GetReferencedCells()){
-                    vector_cells.push_back(sheet_->GetOrCreateCell(pos));
-                }
-            
-
-            CheckCyclicDependencies(vector_cells);
-
-            if(temp_impl->GetReferencedCells().size() > 0)
-                for(auto pos : temp_impl->GetReferencedCells()){
-                    sheet_->GetConcreteCell(pos)->AddReferringCell(this);
-                }
-            
-            impl_ = std::move(temp_impl);
+    if(text.at(0) == FORMULA_SIGN && text.size() > 1){
+        std::unique_ptr<Impl> temp_impl;
+        try{
+            temp_impl = std::make_unique<FormulaImpl>(text.substr(1), *sheet_);
         }
-        else{
-            impl_ = std::make_unique<TextImpl>(text);
+        catch(std::exception&){
+            throw FormulaException("incorrect formula syntaxis");
         }
+
+        std::vector<const Cell*> vector_cells;
+        if(dynamic_cast<FormulaImpl*>(temp_impl.get())->GetReferencedCells().size() > 0){
+            for(auto pos : dynamic_cast<FormulaImpl*>(temp_impl.get())->GetReferencedCells()){
+                vector_cells.push_back(sheet_->GetOrCreateCell(pos));
+            }
+        }
+        
+        CheckCyclicDependencies(vector_cells);
+
+        for(auto cell : GetReferencedCells()){ 
+            Cell* cell_ptr = sheet_->GetConcreteCell(cell); 
+            if(cell_ptr)    cell_ptr->DeleteReferringCell(this); 
+        } 
+
+        if(dynamic_cast<FormulaImpl*>(temp_impl.get())->GetReferencedCells().size() > 0){
+            for(auto pos : dynamic_cast<FormulaImpl*>(temp_impl.get())->GetReferencedCells()){
+                sheet_->GetConcreteCell(pos)->AddReferringCell(this);
+            }
+        }
+
+        InvalidateCache();
+
+        std::swap(impl_, temp_impl);
+        
     }
     else{
-        impl_ = std::make_unique<EmptyImpl>();
+        impl_ = std::make_unique<TextImpl>(text);
+        InvalidateCache();
+        return; 
     }
+
 }
 
 void Cell::Clear()
 {
-    if(IsReferenced())  InvalidateCache();
-    
-    impl_ = std::make_unique<EmptyImpl>();
-
+    Set("");
 }
 
 Cell::Value Cell::GetValue() const
@@ -120,11 +134,11 @@ void Cell::InvalidateCache()
         }
     }
 
-    for(auto cell : GetReferencedCells()){
-        Cell* cell_ptr = sheet_->GetConcreteCell(cell);
-        if(cell_ptr)    cell_ptr->DeleteReferringCell(this);
+    // for(auto cell : GetReferencedCells()){
+    //     Cell* cell_ptr = sheet_->GetConcreteCell(cell);
+    //     if(cell_ptr)    cell_ptr->DeleteReferringCell(this);
     
-    }
+    // }
 
 }
 
