@@ -39,6 +39,8 @@ private:
 
     void InvalidateCache();
 
+    void RemoveThisCellFromDependentCells();
+
     using CellsContainer = std::vector<const Cell*>;
     void CheckCyclicDependenciesRecursion(const Cell* starting_cell, std::unordered_set<const Cell*>& processed_cells) const ;
 

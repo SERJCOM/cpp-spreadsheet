@@ -23,6 +23,7 @@ void Cell::Set(std::string text)
 
 
     if(text.empty()){
+        RemoveThisCellFromDependentCells();
         impl_ = std::make_unique<EmptyImpl>();
         InvalidateCache();
         return;
@@ -47,10 +48,7 @@ void Cell::Set(std::string text)
         
         CheckCyclicDependencies(vector_cells);
 
-        for(auto cell : GetReferencedCells()){ 
-            Cell* cell_ptr = sheet_->GetConcreteCell(cell); 
-            if(cell_ptr)    cell_ptr->DeleteReferringCell(this); 
-        } 
+        RemoveThisCellFromDependentCells();
 
         if(dynamic_cast<FormulaImpl*>(temp_impl.get())->GetReferencedCells().size() > 0){
             for(auto pos : dynamic_cast<FormulaImpl*>(temp_impl.get())->GetReferencedCells()){
@@ -64,6 +62,7 @@ void Cell::Set(std::string text)
         
     }
     else{
+        RemoveThisCellFromDependentCells();
         impl_ = std::make_unique<TextImpl>(text);
         InvalidateCache();
         return; 
@@ -73,7 +72,7 @@ void Cell::Set(std::string text)
 
 void Cell::Clear()
 {
-    Set("");
+    Set(std::string());
 }
 
 Cell::Value Cell::GetValue() const
@@ -136,7 +135,13 @@ void Cell::InvalidateCache()
 
 }
 
-
+void Cell::RemoveThisCellFromDependentCells()
+{
+    for(auto cell : GetReferencedCells()){ 
+        Cell* cell_ptr = sheet_->GetConcreteCell(cell); 
+        if(cell_ptr)    cell_ptr->DeleteReferringCell(this); 
+    } 
+}
 
 void Cell::CheckCyclicDependenciesRecursion(const Cell* starting_cell, std::unordered_set<const Cell*>& processed_cells) const 
 {
